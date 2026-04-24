@@ -1,0 +1,49 @@
+[project]
+name = "cdiff"
+version = "0.1.0"
+description = "Conditional diffusion model for grayscale image colorization"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "numpy>=1.26.0",
+    "pillow>=10.0.0",
+    "einops>=0.7.0",
+    "tqdm>=4.66.0",
+    "matplotlib>=3.8.0",
+    "scikit-image>=0.22.0",
+    "opencv-python>=4.9.0",
+    "pyyaml>=6.0",
+    "tensorboard>=2.15.0",
+    "wandb>=0.16.0",
+    "diffusers>=0.27.0",
+    "accelerate>=0.27.0",
+    "lpips>=0.1.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
+    "ipykernel>=6.29.0",
+    "jupyter>=1.0.0",
+    "pytest>=8.0.0",
+]
+docs = [
+    "sphinx>=5.0,<7.0",
+    "sphinx-book-theme==1.0.1",
+    "myst-parser",
+    "sphinxcontrib-bibtex==2.5.0",
+    "autodocsumm",
+    "sphinx-copybutton",
+    "sphinx-icon",
+    "sphinx-design",
+    "sphinxemoji",
+    "sphinx-tabs",
+    "sphinx-multiversion==0.2.4",
+    "tomli>=2.2.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
