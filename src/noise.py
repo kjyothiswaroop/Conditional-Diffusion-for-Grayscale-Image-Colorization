@@ -33,10 +33,20 @@ class ForwardNoising:
         Args
         ----
         x0 : Torch Tensor
-            Input Image
-        t : int
-            Timestep
+            Batch of input images
+        t : Torch Tensor
+            Batch of timesteps
         """
         epsilon = torch.randn_like(x0)
-        noisy_image = self.signal_rates[t] * x0 + self.noise_rates[t] * epsilon
+        t = t[:,None, None, None]
+        noisy_image = self.signal_rates.to(x0.device)[t] * x0 + self.noise_rates.to(x0.device)[t] * epsilon
         return noisy_image, epsilon
+
+if __name__ == '__main__':
+    forward_noising = ForwardNoising()
+    test_x0 = torch.rand(1, 3, 128, 128)
+    test_t = torch.randint(0,1000, (1,))
+
+    noisy_image , epsilon = forward_noising.noise_image(test_x0, test_t)
+    print('Shape of noisy_image is ', noisy_image.shape)
+    print('Shape of epsilon is ', epsilon.shape)
