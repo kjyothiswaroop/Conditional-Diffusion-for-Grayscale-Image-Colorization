@@ -7,9 +7,15 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import copy
 import os
+import wandb
 class Diffusion:
-
+    """
+    Diffusion Model Class
+    """
     def __init__(self):
+        """
+        Constructor
+        """
         self.device = 'cuda:0'
         self.forward_noising= ForwardNoising()
 
@@ -17,23 +23,38 @@ class Diffusion:
         self.ema_network = copy.deepcopy(self.unet)
         self.ema_network.requires_grad_(False)
 
-        self.optim = torch.optim.Adam(self.unet.parameters(), lr=0.001)
+        self.optim = torch.optim.Adam(self.unet.parameters(), lr=0.0002)
         self.loss = nn.MSELoss()
         self.batch_size = 32
-        self.epochs = 100
+        self.epochs = 1000
 
         self.dataset = self._build_dataloader()
 
         os.makedirs('samples', exist_ok=True)
 
+        wandb.init(
+            project="conditional-diffusion",
+            config = {
+                "lr" : 0.0002,
+                "batch_size" : self.batch_size,
+                "epochs" : self.epochs,
+                "ema_decay" : 0.999
+            }
+        )
+
     def _build_dataloader(self):
+        """
+        Function to build the dataset
+        """
         dataset = load_dataset("kjswaroopNU/celebahq-128-gray", split="train")
         dataset = dataset.with_format("torch")
         dataset = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         return dataset
     
     def _train_step(self, batch):
-
+        """
+        Train step per batch
+        """
         color_images = batch['color'].float().div(255).to(self.device)
         gray_images = batch['gray'].float().div(255).to(self.device)
 
@@ -51,13 +72,17 @@ class Diffusion:
         loss.backward()
         self.optim.step()
 
+        wandb.log({"train_loss" : loss.item()})
+
         for weight, ema_weight in zip(self.unet.parameters(), self.ema_network.parameters()):
             ema_weight.data = 0.999 * ema_weight.data + 0.001 * weight.data
         
         return loss.item()
     
     def train(self):
-        
+        """
+        Train the U-Net model
+        """
         for epoch in range(self.epochs):
             total_loss = 0.0
             for batch in self.dataset:
@@ -88,10 +113,26 @@ class Diffusion:
                 plt.savefig(f'samples/output_epoch_{epoch}.png', bbox_inches='tight')
                 plt.close(fig)
 
-            print(f'Average Loss for epoch {epoch} is {total_loss / len(self.dataset)}')
+                wandb.log({
+                    "samples": [
+                        wandb.Image(
+                            generated[i].permute(1, 2, 0).cpu().numpy(),
+                            caption=f"img_{i}"
+                        )
+                        for i in range(10)
+                    ]
+                }, step=epoch)
+
+            avg_loss = total_loss / len(self.dataset)
+            wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch}, step=epoch)
+            print(f'Average Loss for epoch {epoch} is {avg_loss}')
+
+        wandb.finish()
     
     def denoise(self, noisy_images, gray_images, noise_rates, signal_rates, training):
-
+        """
+        Denoise method
+        """
         if training:
             network = self.unet
         else:
@@ -108,6 +149,9 @@ class Diffusion:
     
     @torch.no_grad()
     def reverse_diffusion(self, gray_images, diffusion_steps):
+        """
+        Inference function to reconstruct the image
+        """
         batch_size = gray_images.shape[0]
         
         #Start with random noise
