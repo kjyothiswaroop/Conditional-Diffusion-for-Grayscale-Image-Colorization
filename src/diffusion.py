@@ -8,6 +8,7 @@ import torch.nn as nn
 import copy
 import os
 import wandb
+import argparse
 class Diffusion:
     """
     Diffusion Model Class
@@ -79,11 +80,22 @@ class Diffusion:
         
         return loss.item()
     
-    def train(self):
+    def train(self, resume=False, checkpoint_path=None):
         """
         Train the U-Net model
         """
-        for epoch in range(self.epochs):
+        start_epoch = 0
+        if resume:
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            self.unet.load_state_dict(checkpoint['unet'])
+            self.ema_network.load_state_dict(checkpoint['ema_network'])
+            self.optim.load_state_dict(checkpoint['optimizer'])
+            start_epoch = checkpoint['epoch'] + 1
+            print(f'Resumed from epoch {checkpoint["epoch"]}')
+
+        os.makedirs('checkpoints', exist_ok=True)
+
+        for epoch in range(start_epoch, self.epochs):
             total_loss = 0.0
             for batch in self.dataset:
                 loss = self._train_step(batch)
@@ -126,6 +138,14 @@ class Diffusion:
             avg_loss = total_loss / len(self.dataset)
             wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch}, step=epoch)
             print(f'Average Loss for epoch {epoch} is {avg_loss}')
+
+            if epoch % 50 == 0 and epoch > 0:
+                torch.save({
+                    'epoch': epoch,
+                    'unet': self.unet.state_dict(),
+                    'ema_network': self.ema_network.state_dict(),
+                    'optimizer': self.optim.state_dict(),
+                }, f'checkpoints/checkpoint_epoch_{epoch}.pt')
 
         wandb.finish()
     
@@ -180,10 +200,13 @@ class Diffusion:
         return x
     
 if __name__ == '__main__':
-    dataset = load_dataset("kjswaroopNU/celebahq-128-gray", split="train")
-    dataset = dataset.with_format("torch")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--checkpoint_path', type=str, default=None)
+    args = parser.parse_args()
 
-    sample_gray = dataset[0]['gray']
-    sample_color = dataset[0]['color']
-    print(f'Shape of Color image is {sample_color.shape}')
-    print(f'Shape of Smaple_gray is {sample_gray.shape}')
+    if args.resume and args.checkpoint_path is None:
+        parser.error('--checkpoint_path is required when using --resume')
+
+    model = Diffusion()
+    model.train(resume=args.resume, checkpoint_path=args.checkpoint_path)
