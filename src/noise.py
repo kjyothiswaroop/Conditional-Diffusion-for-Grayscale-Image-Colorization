@@ -25,6 +25,12 @@ class ForwardNoising:
         diffusion_angles = self.start_angle + self.diffusion_times * (self.end_angle - self.start_angle)
         self.signal_rates = torch.cos(diffusion_angles)
         self.noise_rates = torch.sin(diffusion_angles)
+    
+    def get_signal_noise_rates(self):
+        """
+        Getter function
+        """
+        return self.signal_rates, self.noise_rates
 
     def noise_image(self, x0, t):
         """
