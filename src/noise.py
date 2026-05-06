@@ -14,8 +14,8 @@ class ForwardNoising:
         self.diffusion_times = torch.tensor([x / self.T for x in range(self.T)])
         self.min_signal_rate = 0.02
         self.max_signal_rate = 0.95
-        self.start_angle = np.acos(self.max_signal_rate)
-        self.end_angle = np.acos(self.min_signal_rate)
+        self.start_angle = np.arccos(self.max_signal_rate)
+        self.end_angle = np.arccos(self.min_signal_rate)
         self._offset_cosine_scheduler()
 
     def _offset_cosine_scheduler(self):
