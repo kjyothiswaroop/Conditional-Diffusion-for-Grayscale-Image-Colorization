@@ -1,5 +1,5 @@
 import torch
-from datasets import load_dataset, Image
+from datasets import load_dataset
 from torch.utils.data import DataLoader
 from noise import ForwardNoising
 from unet import UNet
@@ -51,13 +51,25 @@ class Diffusion:
         dataset = dataset.with_format("torch")
         dataset = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         return dataset
+
+    def _normalize_images(self, images):
+        """
+        Convert image tensors from [0, 255] to the diffusion model range [-1, 1].
+        """
+        return images.float().div(127.5).sub(1.0)
+
+    def _denormalize_images(self, images):
+        """
+        Convert image tensors from [-1, 1] back to [0, 1] for display/logging.
+        """
+        return images.add(1.0).div(2.0).clamp(0.0, 1.0)
     
     def _train_step(self, batch):
         """
         Train step per batch
         """
-        color_images = batch['color'].float().div(255).to(self.device)
-        gray_images = batch['gray'].float().div(255).to(self.device)
+        color_images = self._normalize_images(batch['color']).to(self.device)
+        gray_images = self._normalize_images(batch['gray']).to(self.device)
 
         t = torch.randint(0, self.forward_noising.T, (self.batch_size,)).to(self.device)
         signal_rates, noise_rates = self.forward_noising.get_signal_noise_rates()
@@ -75,10 +87,21 @@ class Diffusion:
 
         wandb.log({"train_loss" : loss.item()})
 
-        for weight, ema_weight in zip(self.unet.parameters(), self.ema_network.parameters()):
-            ema_weight.data = 0.999 * ema_weight.data + 0.001 * weight.data
+        self._update_ema()
         
         return loss.item()
+
+    @torch.no_grad()
+    def _update_ema(self):
+        """
+        Update EMA weights and copy non-trainable state such as BatchNorm stats.
+        """
+        ema_decay = 0.999
+        for weight, ema_weight in zip(self.unet.parameters(), self.ema_network.parameters()):
+            ema_weight.mul_(ema_decay).add_(weight, alpha=1.0 - ema_decay)
+
+        for buffer, ema_buffer in zip(self.unet.buffers(), self.ema_network.buffers()):
+            ema_buffer.copy_(buffer)
     
     def train(self, resume=False, checkpoint_path=None):
         """
@@ -103,18 +126,21 @@ class Diffusion:
 
             if epoch % 10 == 0:
                 # Take 10 images from the batch (both color and gray scale)
-                test_color = batch['color'].float().div(255).to(self.device)[:10]
-                test_gray = batch['gray'].float().div(255).to(self.device)[:10]
+                test_color = self._normalize_images(batch['color']).to(self.device)[:10]
+                test_gray = self._normalize_images(batch['gray']).to(self.device)[:10]
 
                 #Pass through the reverse diffusion 
-                generated = self.reverse_diffusion(test_gray, diffusion_steps=20)
+                generated = self.reverse_diffusion(test_gray, diffusion_steps=100)
+                display_gray = self._denormalize_images(test_gray)
+                display_generated = self._denormalize_images(generated)
+                display_color = self._denormalize_images(test_color)
                 
                 #Save the image to samples directory
                 fig, axes = plt.subplots(3, 10, figsize=(12, 9))
                 for col in range(10):
-                    axes[0, col].imshow(test_gray[col].squeeze().cpu(), cmap='gray')
-                    axes[1, col].imshow(generated[col].permute(1, 2, 0).cpu())
-                    axes[2, col].imshow(test_color[col].permute(1, 2, 0).cpu())
+                    axes[0, col].imshow(display_gray[col].squeeze().cpu(), cmap='gray')
+                    axes[1, col].imshow(display_generated[col].permute(1, 2, 0).cpu())
+                    axes[2, col].imshow(display_color[col].permute(1, 2, 0).cpu())
                     for row in range(3):
                         axes[row, col].axis('off')
 
@@ -128,15 +154,15 @@ class Diffusion:
                 wandb.log({
                     "samples": [
                         wandb.Image(
-                            generated[i].permute(1, 2, 0).cpu().numpy(),
+                            display_generated[i].permute(1, 2, 0).cpu().numpy(),
                             caption=f"img_{i}"
                         )
                         for i in range(10)
                     ]
-                }, step=epoch)
+                })
 
             avg_loss = total_loss / len(self.dataset)
-            wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch}, step=epoch)
+            wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch})
             print(f'Average Loss for epoch {epoch} is {avg_loss}')
 
             if epoch % 50 == 0 and epoch > 0:
@@ -163,7 +189,7 @@ class Diffusion:
 
         x_cond = torch.cat([noisy_images, gray_images], dim=1)
         eps_pred = network(x_cond, noise_rates ** 2)
-        pred_images = torch.clamp((noisy_images - nr * eps_pred) / sr, 0.0, 1.0)
+        pred_images = (noisy_images - nr * eps_pred) / sr
 
         return eps_pred, pred_images
     
@@ -173,6 +199,7 @@ class Diffusion:
         Inference function to reconstruct the image
         """
         batch_size = gray_images.shape[0]
+        self.ema_network.eval()
         
         #Start with random noise
         x = torch.randn(batch_size, 3, 128, 128, device=self.device)
