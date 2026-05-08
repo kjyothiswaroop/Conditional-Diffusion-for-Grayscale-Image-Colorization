@@ -1,0 +1,16 @@
+lr: 0.0002
+batch_size: 32
+epochs: 1000
+
+dataset_name: kjswaroopNU/celebahq-128-gray
+
+resume: false
+checkpoint_path: checkpoints/latest.pt
+
+inference: false
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/${now:%Y-%m-%d_%H-%M-%S}
