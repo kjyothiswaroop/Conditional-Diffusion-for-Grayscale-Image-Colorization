@@ -24,7 +24,22 @@ class Diffusion:
     def __init__(self, lr=0.0002, batch_size=32, epochs=1000,
                  dataset_name="kjswaroopNU/celebahq-128-gray", inference=False):
         """
-        Constructor
+        Constructor for the Diffusion class.
+        Builds the UNet and its EMA copy. In training mode also initialises
+        the optimiser, loss, dataloader, sample directory, and wandb run.
+
+        Args
+        ----
+        lr : float
+            Learning rate for the Adam optimiser
+        batch_size : int
+            Number of samples per training batch
+        epochs : int
+            Total number of training epochs
+        dataset_name : str
+            HuggingFace dataset repo to load colour/gray image pairs from
+        inference : bool
+            When True, skips optimiser, dataloader, and wandb initialisation
         """
         self.device = 'cuda:0'
         self.forward_noising= ForwardNoising()
@@ -55,8 +70,14 @@ class Diffusion:
 
     def _build_dataloader(self):
         """
-        Function to build the dataset
+        Builds the training DataLoader from the HuggingFace dataset.
+
+        Returns
+        -------
+        dataset : DataLoader
+            Shuffled DataLoader over the train split
         """
+        print("Pulling Dataset from HuggingFace .......")
         dataset = load_dataset(self.dataset_name, split="train")
         dataset = dataset.with_format("torch")
         dataset = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
@@ -64,19 +85,51 @@ class Diffusion:
 
     def _normalize_images(self, images):
         """
-        Convert image tensors from [0, 255] to the diffusion model range [-1, 1].
+        Converts image tensors from [0, 255] to the diffusion model range [-1, 1].
+
+        Args
+        ----
+        images : tensor
+            Uint8 image tensor of shape (B, C, H, W)
+
+        Returns
+        -------
+        images : tensor
+            Float tensor scaled to [-1, 1]
         """
         return images.float().div(127.5).sub(1.0)
 
     def _denormalize_images(self, images):
         """
-        Convert image tensors from [-1, 1] back to [0, 1] for display/logging.
+        Converts image tensors from [-1, 1] back to [0, 1] for display/logging.
+
+        Args
+        ----
+        images : tensor
+            Float tensor in [-1, 1] of shape (B, C, H, W)
+
+        Returns
+        -------
+        images : tensor
+            Float tensor clamped to [0, 1]
         """
         return images.add(1.0).div(2.0).clamp(0.0, 1.0)
     
     def _train_step(self, batch):
         """
-        Train step per batch
+        Runs a single training step on one batch.
+        Samples random timesteps, adds noise via the forward process,
+        predicts the noise with the UNet, computes MSE loss, and updates weights.
+
+        Args
+        ----
+        batch : dict
+            Dict with keys 'color' and 'gray', each a tensor of shape (B, C, H, W)
+
+        Returns
+        -------
+        loss : float
+            Scalar MSE loss for this batch
         """
         color_images = self._normalize_images(batch['color']).to(self.device)
         gray_images = self._normalize_images(batch['gray']).to(self.device)
@@ -104,7 +157,8 @@ class Diffusion:
     @torch.no_grad()
     def _update_ema(self):
         """
-        Update EMA weights and copy non-trainable state such as BatchNorm stats.
+        Updates EMA weights and copies non-trainable BatchNorm buffers from the
+        live UNet to the EMA network after each training step.
         """
         ema_decay = 0.999
         for weight, ema_weight in zip(self.unet.parameters(), self.ema_network.parameters()):
@@ -115,7 +169,18 @@ class Diffusion:
     
     def train(self, resume=False, checkpoint_path=None):
         """
-        Train the U-Net model
+        Runs the full training loop for the configured number of epochs.
+        Every 10 epochs saves a sample grid to samples/ and logs to wandb.
+        Every 50 epochs saves a named checkpoint to checkpoints/.
+
+        Args
+        ----
+        resume : bool
+            When True, loads weights and optimiser state from checkpoint_path
+            before starting
+        checkpoint_path : str or None
+            Path to the checkpoint file to resume from (relative to project root
+            or absolute)
         """
         start_epoch = 0
         if resume:
@@ -190,7 +255,28 @@ class Diffusion:
     
     def denoise(self, noisy_images, gray_images, noise_rates, signal_rates, training):
         """
-        Denoise method
+        Predicts the noise in noisy_images conditioned on gray_images,
+        then computes the denoised image estimate.
+
+        Args
+        ----
+        noisy_images : tensor
+            Noisy RGB tensor of shape (B, 3, H, W)
+        gray_images : tensor
+            Grayscale conditioning tensor of shape (B, 1, H, W)
+        noise_rates : tensor
+            Noise rate at timestep t, shape (B,)
+        signal_rates : tensor
+            Signal rate at timestep t, shape (B,)
+        training : bool
+            When True uses the live UNet; when False uses the EMA network
+
+        Returns
+        -------
+        eps_pred : tensor
+            Predicted noise, shape (B, 3, H, W)
+        pred_images : tensor
+            Denoised image estimate, shape (B, 3, H, W)
         """
         if training:
             network = self.unet
@@ -209,12 +295,24 @@ class Diffusion:
     @torch.no_grad()
     def reverse_diffusion(self, gray_images, diffusion_steps):
         """
-        Inference function to reconstruct the image
+        Runs the reverse diffusion process to colorize a batch of grayscale images.
+        Iteratively denoises from pure noise to a clean RGB image using the EMA network.
+
+        Args
+        ----
+        gray_images : tensor
+            Grayscale conditioning tensor of shape (B, 1, H, W) in [-1, 1]
+        diffusion_steps : int
+            Number of denoising steps (fewer steps = faster, lower quality)
+
+        Returns
+        -------
+        x : tensor
+            Colorized RGB tensor of shape (B, 3, H, W) in [-1, 1]
         """
         batch_size = gray_images.shape[0]
         self.ema_network.eval()
-        
-        #Start with random noise
+
         x = torch.randn(batch_size, 3, 128, 128, device=self.device)
        
         # Pass through forward noising process

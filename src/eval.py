@@ -46,7 +46,7 @@ with gr.Blocks(title="Image Colorizer") as demo:
             num_samples = gr.Slider(minimum=1, maximum=8, value=1, step=1, label="Number of Samples")
             run_btn = gr.Button("Colorize", variant="primary")
         with gr.Column():
-            output_gallery = gr.Gallery(label="Colorized Outputs", columns=2)
+            output_gallery = gr.Gallery(label="Colorized Outputs", columns=2, object_fit="scale-down", height=200)
 
     run_btn.click(fn=colorize, inputs=[input_image, diffusion_steps, num_samples], outputs=output_gallery)
 

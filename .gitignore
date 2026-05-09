@@ -1,6 +1,9 @@
 .vscode
 **/__pycache__
 
+# Sphinx build output
+build/
+
 # Training artifacts
 wandb/
 samples/

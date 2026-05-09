@@ -8,7 +8,9 @@ class ForwardNoising:
     """
     def __init__(self):
         """
-        Constructor
+        Constructor for ForwardNoising.
+        Precomputes signal and noise rates for all T timesteps using an
+        offset cosine schedule bounded between min and max signal rates.
         """
         self.T = 1000
         self.diffusion_times = torch.tensor([x / self.T for x in range(self.T)])
@@ -20,7 +22,9 @@ class ForwardNoising:
 
     def _offset_cosine_scheduler(self):
         """
-        Noise Schedule function
+        Computes signal and noise rates for all timesteps using an offset cosine schedule.
+        Angles are linearly interpolated between start_angle and end_angle so that
+        signal_rate = cos(angle) and noise_rate = sin(angle), satisfying signal² + noise² = 1.
         """
         diffusion_angles = self.start_angle + self.diffusion_times * (self.end_angle - self.start_angle)
         self.signal_rates = torch.cos(diffusion_angles)
@@ -28,20 +32,36 @@ class ForwardNoising:
     
     def get_signal_noise_rates(self):
         """
-        Getter function
+        Returns the precomputed signal and noise rate schedules.
+
+        Returns
+        -------
+        signal_rates : tensor
+            Cosine signal rates for all T timesteps, shape (T,)
+        noise_rates : tensor
+            Sine noise rates for all T timesteps, shape (T,)
         """
         return self.signal_rates, self.noise_rates
 
     def noise_image(self, x0, t):
         """
-        Apply noising process to the image
+        Applies the forward noising process to a batch of images at timesteps t.
+        Samples Gaussian noise and blends it with x0 using the precomputed rates:
+        x_t = signal_rate[t] * x0 + noise_rate[t] * epsilon
 
         Args
         ----
-        x0 : Torch Tensor
-            Batch of input images
-        t : Torch Tensor
-            Batch of timesteps
+        x0 : tensor
+            Clean input images, shape (B, C, H, W)
+        t : tensor
+            Batch of timestep indices, shape (B,)
+
+        Returns
+        -------
+        noisy_image : tensor
+            Noised image at timestep t, shape (B, C, H, W)
+        epsilon : tensor
+            Gaussian noise that was added, shape (B, C, H, W)
         """
         epsilon = torch.randn_like(x0)
         t = t[:,None, None, None]

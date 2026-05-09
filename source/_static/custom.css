@@ -1,0 +1,56 @@
+/* Dark green/black theme */
+
+[data-theme="dark"] {
+    --color-background-primary: #0b0f0b;
+    --color-background-secondary: #111811;
+    --color-background-hover: #1a2a1a;
+    --color-brand-primary: #4dff91;
+    --color-brand-content: #4dff91;
+    --color-foreground-primary: #e8f5e8;
+    --color-foreground-secondary: #a8c8a8;
+    --color-foreground-muted: #6a9a6a;
+    --color-header-background: #070d07;
+    --color-header-text: #4dff91;
+    --color-sidebar-background: #0b0f0b;
+    --color-sidebar-background-border: #1e3a1e;
+    --color-sidebar-brand-text: #4dff91;
+    --color-sidebar-link-text: #c8e8c8;
+    --color-sidebar-link-text--top-level: #4dff91;
+    --color-toc-background: #0b0f0b;
+    --color-toc-item-text: #a8c8a8;
+    --color-toc-item-text--active: #4dff91;
+    --color-link: #4dff91;
+    --color-link--visited: #2db86e;
+    --color-link--hover: #80ffb4;
+    --color-highlight-on-target: #1a3a1a;
+    --color-code-background: #0f1a0f;
+    --color-code-foreground: #c8f0c8;
+    --color-admonition-background: #0f1a0f;
+}
+
+/* Signature / function name highlight */
+[data-theme="dark"] dt.sig {
+    background-color: #0f1f0f;
+    border-left: 3px solid #4dff91;
+    padding: 0.4em 0.6em;
+}
+
+[data-theme="dark"] dt.sig .sig-name {
+    color: #4dff91;
+}
+
+[data-theme="dark"] dt.sig .sig-param {
+    color: #a8d8a8;
+}
+
+/* Section headings */
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3 {
+    color: #4dff91;
+}
+
+/* Nav header */
+[data-theme="dark"] .navbar-header-items {
+    background: #070d07;
+}
